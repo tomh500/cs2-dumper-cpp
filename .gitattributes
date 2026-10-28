@@ -1,4 +1,6 @@
 *.cs linguist-detectable=false
 *.hpp linguist-detectable=false
 *.json linguist-detectable=false
-*.rs linguist-detectable=true
+*.rs linguist-detectable=false
+cpp/** linguist-detectable=true
+third_party/** linguist-vendored=true
