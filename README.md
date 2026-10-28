@@ -59,7 +59,9 @@ ctest --test-dir build -C Release --output-on-failure
 
 ctest 不依赖游戏：覆盖 RIP 位移、通配符和捕获、无匹配/多匹配、Schema 字段读取、哈希表去重和循环检测、五种格式输出、关键字及名称冲突。还读取 output/ 历史 JSON 作为回归输入，验证五种格式可生成且 JSON 数据不变。
 
-实际游戏兼容性需要在运行中的 CS2 上验证。测试不注入、不启动游戏。
+2026-10-28 已在本机运行中的 CS2 build 14192 验证：五种格式全部生成，32 个偏移、137 个接口、16 个按钮、3300 个类、569 个枚举、17073 个字段，分析状态 complete、错误数 0。游戏后续更新仍需重新验证。单元测试不注入、不启动游戏。
+
+Schema 池按 `peak_allocated - blocks_allocated` 限定空闲链表读取数量，避免读取回收区域。父类解析同时检查 has_base_class 和内部指针。接口支持 Source 2 及 Steam 旧式注册表入口；不暴露标准注册表的自定义工厂（例如 crashhandler64.dll）会记录跳过，不会把任意指令当作 RIP 位移解析。
 
 ## 许可
 

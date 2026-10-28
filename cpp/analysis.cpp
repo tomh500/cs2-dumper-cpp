@@ -23,11 +23,23 @@ template<class F> void chain(Address node, F visit) {
 }
 struct Signature { const char* module; const char* name; const char* pattern; };
 #include "signatures.inc"
+std::optional<Address> interface_registry(const Image& image,std::uint32_t exported) {
+    std::size_t code=exported;
+    // Steam's older factory has a stack/register prologue before the list load.
+    static const std::uint8_t legacy[]={0x48,0x89,0x5c,0x24,0x08,0x48,0x89,0x74,0x24,0x10,0x57,0x48,0x83,0xec,0x20};
+    if(code<=image.bytes.size() && sizeof legacy<=image.bytes.size()-code &&
+       std::memcmp(image.bytes.data()+code,legacy,sizeof legacy)==0) code+=sizeof legacy;
+    if(code>image.bytes.size() || image.bytes.size()-code<7) return {};
+    auto rex=image.at<std::uint8_t>(code),opcode=image.at<std::uint8_t>(code+1),modrm=image.at<std::uint8_t>(code+2);
+    // Only decode a verified RIP-relative MOV, never an arbitrary factory prologue.
+    if((rex!=0x48 && rex!=0x4c) || opcode!=0x8b || (modrm&0xc7)!=0x05) return {};
+    return image.module.base+code+7+static_cast<std::int64_t>(image.at<std::int32_t>(code+3));
+}
 }
 std::vector<Address> hash_elements(const Memory& m, Address hash) {
     std::unordered_set<Address> unique;
     auto allocated=m.read<std::int32_t>(hash+0xc), peak=m.read<std::int32_t>(hash+0x10);
-    if(allocated<0 || peak<0 || allocated>max_nodes || peak>max_nodes) throw std::runtime_error("Invalid schema hash count");
+    if(allocated<0 || peak<allocated || allocated>max_nodes || peak>max_nodes) throw std::runtime_error("Invalid schema hash count");
     std::size_t count=0;
     for(unsigned i=0;i<256 && count<static_cast<std::size_t>(allocated);++i) {
         auto node=m.read<Address>(hash+0x60+i*0x18+0x10);
@@ -38,10 +50,13 @@ std::vector<Address> hash_elements(const Memory& m, Address hash) {
         });
     }
     count=0;
-    if(peak) chain(m.read<Address>(hash+0x20),[&](Address p) {
+    // The pool high-water count includes nodes still held in the buckets.
+    // Following peak nodes here crosses into unused/recycled pool storage.
+    const auto free_count=static_cast<std::size_t>(peak-allocated);
+    if(free_count) chain(m.read<Address>(hash+0x20),[&](Address p) {
         auto data=m.read<Address>(p+0x10);
         if(data) {unique.insert(data);++count;}
-        return count>=static_cast<std::size_t>(peak) ? Address(0) : m.read<Address>(p);
+        return count>=free_count ? Address(0) : m.read<Address>(p);
     });
     std::vector<Address> out(unique.begin(),unique.end()); std::sort(out.begin(),out.end()); return out;
 }
@@ -51,7 +66,10 @@ Json read_class(const Memory& m, Address b) {
     auto count=m.read<std::int16_t>(b+0x24), metadata_count=m.read<std::int16_t>(b+0x26);
     if(count<0 || metadata_count<0) throw std::runtime_error("Invalid class counts");
     auto parent=m.read<Address>(b+0x40);
-    if(parent) result["parent"]=m.string(m.read<Address>(m.read<Address>(parent+0x18)+0x10));
+    if(m.read<std::uint8_t>(b+0x2b) && parent) {
+        auto parent_class=m.read<Address>(parent+0x18);
+        if(parent_class) result["parent"]=m.string(m.read<Address>(parent_class+0x10));
+    }
     auto fields=m.read<Address>(b+0x30);
     if(count && !fields) throw std::runtime_error("Null class fields");
     for(int i=0;i<count;++i) {
@@ -94,8 +112,8 @@ Json read_enum(const Memory& m, Address b) {
 }
 Result analyze(const Process& p, const Log& log) {
     Result out;
-    auto attempt=[&](const std::string& label, auto action) {
-        try { action(); log("Completed " + label); }
+    auto attempt=[&](const std::string& label, auto action,bool report_success=true) {
+        try { action(); if(report_success) log("Completed " + label); }
         catch(const std::exception& e) { auto msg=label+": "+e.what(); out.errors.push_back(msg); log(msg); }
     };
     attempt("buttons",[&] {
@@ -113,9 +131,11 @@ Result analyze(const Process& p, const Log& log) {
         // A module without CreateInterface is normal.
         Image img; std::uint32_t exported=0;
         try { img=p.image(mod); exported=img.exported("CreateInterface"); } catch(const std::exception&) {continue;}
+        auto registry=interface_registry(img,exported);
+        if(!registry) {log("Skipped interfaces/"+mod.name+": factory does not expose a standard interface registry");continue;}
         attempt("interfaces/"+mod.name,[&] {
             Json interfaces=Json::object();
-            chain(p.read<Address>(p.rip(mod.base+exported)),[&](Address reg) {
+            chain(p.read<Address>(*registry),[&](Address reg) {
                 auto instance=p.rip(p.read<Address>(reg));
                 if(instance>=mod.base) interfaces[p.string(p.read<Address>(reg+8),128)]=instance-mod.base;
                 return p.read<Address>(reg+0x10);
@@ -147,11 +167,12 @@ Result analyze(const Process& p, const Log& log) {
             Json classes=Json::object(), enums=Json::object();
             for(auto binding:hash_elements(p,scope+0x560)) attempt("class/"+hex(binding),[&] {
                 auto c=read_class(p,binding); auto name=c["name"].get<std::string>(); c.erase("name"); classes[name]=c;
-            });
+            },false);
             for(auto binding:hash_elements(p,scope+0x1dd0)) attempt("enum/"+hex(binding),[&] {
                 auto e=read_enum(p,binding); auto name=e["name"].get<std::string>(); e.erase("name"); enums[name]=e;
-            });
+            },false);
             if(!classes.empty() || !enums.empty()) out.schemas[module]={{"classes",classes},{"enums",enums}};
+            log("Schemas/"+module+": "+std::to_string(classes.size())+" classes, "+std::to_string(enums.size())+" enums");
         }
         if(out.schemas.empty()) throw std::runtime_error("No schema bindings found");
     });
