@@ -1,9 +1,11 @@
 /.idea
 /.vscode
 /.vs
-/target
-Cargo.lock
 cs2-dumper.exe
+*.log
 /build/
 /bin/
 /fixture_headers/
+/test_export/
+/output/
+/dump/

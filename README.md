@@ -2,7 +2,7 @@
 
 Windows x64 原生 C++17 版本，使用本机 MSVC 构建，无需安装 Rust、Cargo 或 memflow。
 
-本分支迁移自 tomh500/cs2-dumper-cpp 的 Rust 实现，保留 MIT 许可证和原作者署名。原来的 `src/`、`Cargo.toml` 仅供对照，CMake 不读取或编译 Rust 源码；实际程序源码在 `cpp/`。
+本项目是原项目 [a2x/cs2-dumper](https://github.com/a2x/cs2-dumper) 的 Windows C++17 移植版，基于 fork [tomh500/cs2-dumper-cpp](https://github.com/tomh500/cs2-dumper-cpp) 开发，保留原作者 a2x 的 MIT 许可证及版权声明。程序源码在 `cpp/`，旧 Rust 实现可从 Git 历史查看。
 
 ## 构建
 
@@ -45,7 +45,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 导出按钮、CreateInterface 接口、29 条基础偏移及 3 条派生偏移、Schema 类字段/父类/元数据和枚举，以及 info.json 中的构建号和时间。偏移以模块基址为参照。代码输出保留 cs2_dumper / CS2Dumper 分组结构，JSON 保留原有数据结构。
 
-退出码：0 表示完整分析；1 表示致命错误；2 表示部分分析失败。部分结果仍会导出，info.json 的 status 为 partial，errors 列出失败项。请使用新的输出目录，避免混入以往的 Schema 文件。仓库自带的 output/ 是历史参考数据，不代表本次运行结果。
+退出码：0 表示完整分析；1 表示致命错误；2 表示部分分析失败。部分结果仍会导出，info.json 的 status 为 partial，errors 列出失败项。请使用新的输出目录，避免混入以往的 Schema 文件。运行输出、日志及构建产物已加入 `.gitignore`。
 
 ## 与 Rust 版本的差异
 
@@ -57,7 +57,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 ## 验证
 
-ctest 不依赖游戏：覆盖 RIP 位移、通配符和捕获、无匹配/多匹配、Schema 字段读取、哈希表去重和循环检测、五种格式输出、关键字及名称冲突。还读取 output/ 历史 JSON 作为回归输入，验证五种格式可生成且 JSON 数据不变。
+ctest 不依赖游戏：覆盖 RIP 位移、通配符和捕获、无匹配/多匹配、Schema 字段读取、哈希表去重和循环检测、五种格式输出、关键字及名称冲突。还读取 `tests/fixtures/` 历史 JSON 作为回归输入，验证五种格式可生成且 JSON 数据不变。这些数据仅供测试，不代表当前游戏版本。
 
 2026-10-28 已在本机运行中的 CS2 build 14192 验证：五种格式全部生成，32 个偏移、137 个接口、16 个按钮、3300 个类、569 个枚举、17073 个字段，分析状态 complete、错误数 0。游戏后续更新仍需重新验证。单元测试不注入、不启动游戏。
 
@@ -65,6 +65,6 @@ Schema 池按 `peak_allocated - blocks_allocated` 限定空闲链表读取数量
 
 ## 许可
 
-项目：[MIT](LICENSE)，上游作者 a2x 等。
+原项目：[a2x/cs2-dumper](https://github.com/a2x/cs2-dumper)，原作者 a2x，许可证：[MIT](LICENSE)。本仓库为其 fork 的 C++17 移植版。
 
 随附依赖：[nlohmann/json 3.11.3](https://github.com/nlohmann/json/tree/v3.11.3)，许可证见 third_party/nlohmann/LICENSE.MIT。
